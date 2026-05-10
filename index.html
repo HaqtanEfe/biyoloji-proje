@@ -162,6 +162,49 @@
   #submit-msg.ok      { color: var(--teal); }
   #submit-msg.err     { color: #E24B4A; }
   #submit-msg.loading { color: var(--text3); }
+
+  /* ── Scoreboard ─────────────────────────────── */
+  #scoreboard-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  #scoreboard-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  #scoreboard-header h2 { font-size: 16px; font-weight: 700; }
+  #sb-refresh-btn {
+    font-size: 12px; padding: 5px 12px; border-radius: 99px;
+    border: 1px solid var(--border-md); background: var(--surface2);
+    cursor: pointer; font-family: 'Nunito', sans-serif; font-weight: 600; color: var(--text2);
+    transition: background .12s;
+  }
+  #sb-refresh-btn:hover { background: var(--border); }
+
+  #sb-list { list-style: none; }
+  #sb-list li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  #sb-list li:last-child { border-bottom: none; }
+  .sb-rank {
+    font-size: 12px; font-weight: 700; color: var(--text3);
+    width: 22px; text-align: center; flex-shrink: 0;
+  }
+  .sb-rank.gold   { color: #c08700; }
+  .sb-rank.silver { color: #7a7a7a; }
+  .sb-rank.bronze { color: #8c4a1a; }
+  .sb-name { flex: 1; font-weight: 600; color: var(--text); }
+  .sb-score {
+    font-weight: 700; color: var(--teal-dark);
+    background: var(--teal-light); border-radius: 99px;
+    padding: 2px 10px; font-size: 13px;
+  }
+  .sb-date { font-size: 11px; color: var(--text3); flex-shrink: 0; }
+  #sb-empty { font-size: 13px; color: var(--text3); font-style: italic; padding: 8px 0; }
+  #sb-loading { font-size: 13px; color: var(--text3); padding: 8px 0; }
+  #sb-error { font-size: 13px; color: #E24B4A; padding: 8px 0; }
 </style>
 </head>
 <body>
@@ -182,7 +225,7 @@
   <div id="pbwrap"><div id="pb"></div></div>
   <div id="fdbk"></div>
 
-  <!-- Results panel — shown after Kontrol Et -->
+  <!-- Results panel -->
   <div id="results-overlay">
     <div id="results-emoji"></div>
     <div id="results-title"></div>
@@ -213,6 +256,17 @@
     <div id="submit-msg"></div>
   </div>
 
+  <!-- Scoreboard -->
+  <div id="scoreboard-section">
+    <div id="scoreboard-header">
+      <h2>🏆 Skor Tablosu</h2>
+      <button id="sb-refresh-btn">↺ Yenile</button>
+    </div>
+    <ul id="sb-list">
+      <li id="sb-loading">Yükleniyor…</li>
+    </ul>
+  </div>
+
   <div id="pool-section">
     <div id="pool-label">Organlar — sürükle veya seç, sonra sisteme bırak</div>
     <div id="pool"></div>
@@ -226,99 +280,136 @@
   </div>
 </div>
 
-<script>
-/* ─── CONFIG ───────────────────────────────────────────────────────
-   Change API_URL to your server address once your backend is running.
-   Example: 'https://yoursite.com/api/scores'
-──────────────────────────────────────────────────────────────────── */
-const API_URL = 'http://localhost:3000/api/scores';
+<!-- Firebase SDK (compat / CDN — no build step needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-/* ─── DATA ─────────────────────────────────────────────────────────
-   Image paths point to local files.
-   Folder structure:
-     images/systems/sinir-sistemi.png  etc.
-     images/organs/beyin.png           etc.
-──────────────────────────────────────────────────────────────────── */
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   🔥 FIREBASE CONFIG
+   1. Go to https://console.firebase.google.com
+   2. Create a project → "Add app" → Web
+   3. Copy the firebaseConfig object and paste it below.
+   4. In Firebase console: Firestore Database → Create database (start in test mode)
+   5. (Optional) Set security rules when done testing.
+   ══════════════════════════════════════════════════════════════════ */
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const SCORES_COLLECTION = 'scores';
+
+/* ── Scoreboard helpers ─────────────────────────────────────────── */
+async function loadScoreboard() {
+  const list = document.getElementById('sb-list');
+  list.innerHTML = '<li id="sb-loading">Yükleniyor…</li>';
+  try {
+    const snap = await db.collection(SCORES_COLLECTION)
+      .orderBy('score', 'desc')
+      .orderBy('date', 'asc')
+      .limit(10)
+      .get();
+
+    list.innerHTML = '';
+    if (snap.empty) {
+      list.innerHTML = '<li id="sb-empty">Henüz skor yok — ilk sen ol!</li>';
+      return;
+    }
+    snap.forEach((doc, idx) => {
+      const d = doc.data();
+      const rank = snap.docs.indexOf(doc) + 1;
+      const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+      const dateStr = d.date ? new Date(d.date).toLocaleDateString('tr-TR', { day:'2-digit', month:'short' }) : '';
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span class="sb-rank ${rankClass}">${rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}</span>
+        <span class="sb-name">${escHtml(d.username)}</span>
+        <span class="sb-score">${d.score} puan</span>
+        <span class="sb-date">${dateStr}</span>
+      `;
+      list.appendChild(li);
+    });
+  } catch(err) {
+    console.error(err);
+    list.innerHTML = '<li id="sb-error">Skor tablosu yüklenemedi.</li>';
+  }
+}
+
+function escHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.getElementById('sb-refresh-btn').addEventListener('click', loadScoreboard);
+loadScoreboard();
+
+/* ══════════════════════════════════════════════════════════════════
+   GAME DATA
+   ══════════════════════════════════════════════════════════════════ */
 const SYSTEMS = {
   "Sinir Sistemi": {
-    emoji: "🧠",
-    img: "images/systems/sinir-sistemi.png",
+    emoji: "🧠", img: "images/systems/sinir-sistemi.png",
     organs: ["Beyin","Omurilik","Sinirler","Hipofiz bezi"]
   },
   "Dolaşım Sistemi": {
-    emoji: "❤️",
-    img: "images/systems/dolasim-sistemi.png",
+    emoji: "❤️", img: "images/systems/dolasim-sistemi.png",
     organs: ["Kalp","Aorta","Kılcal damarlar","Toplardamarlar","Atardamarlar"]
   },
   "Solunum Sistemi": {
-    emoji: "🫁",
-    img: "images/systems/solunum-sistemi.png",
+    emoji: "🫁", img: "images/systems/solunum-sistemi.png",
     organs: ["Akciğerler","Bronşlar","Soluk borusu","Gırtlak","Diyafram"]
   },
   "Sindirim Sistemi": {
-    emoji: "🫃",
-    img: "images/systems/sindirim-sistemi.png",
+    emoji: "🫃", img: "images/systems/sindirim-sistemi.png",
     organs: ["Mide","İnce bağırsak","Karaciğer","Pankreas"]
   },
   "Boşaltım Sistemi": {
-    emoji: "💧",
-    img: "images/systems/bosaltim-sistemi.png",
+    emoji: "💧", img: "images/systems/bosaltim-sistemi.png",
     organs: ["Böbrekler","Mesane","Üretra","Böbrek üstü bezleri"]
   },
   "Endokrin Sistem": {
-    emoji: "⚗️",
-    img: "images/systems/endokrin-sistem.png",
+    emoji: "⚗️", img: "images/systems/endokrin-sistem.png",
     organs: ["Tiroit bezi","Paratiroit bezi","Böbrek üstü korteksi","Epifiz bezi"]
   },
   "Üreme Sistemi": {
-    emoji: "🧬",
-    img: "images/systems/ureme-sistemi.png",
+    emoji: "🧬", img: "images/systems/ureme-sistemi.png",
     organs: ["Yumurtalıklar","Testisler","Rahim","Fallop tüpleri","Prostat"]
   },
   "İskelet Sistemi": {
-    emoji: "🦴",
-    img: "images/systems/iskelet-sistemi.png",
+    emoji: "🦴", img: "images/systems/iskelet-sistemi.png",
     organs: ["Femur","Kafatası","Omurlar","Kaburgalar","Kıkırdak"]
   }
 };
 
 const ORGAN_IMAGES = {
-  "Beyin":               "images/organs/beyin.png",
-  "Omurilik":            "images/organs/omurilik.png",
-  "Sinirler":            "images/organs/sinirler.png",
-  "Hipofiz bezi":        "images/organs/hipofiz-bezi.png",
-  "Kalp":                "images/organs/kalp.png",
-  "Aorta":               "images/organs/aorta.png",
-  "Kılcal damarlar":     "images/organs/kilcal-damarlar.png",
-  "Toplardamarlar":      "images/organs/toplardamarlar.png",
-  "Atardamarlar":        "images/organs/atardamarlar.png",
-  "Akciğerler":          "images/organs/akciger.png",
-  "Bronşlar":            "images/organs/brons.png",
-  "Soluk borusu":        "images/organs/soluk-borusu.png",
-  "Gırtlak":             "images/organs/girtlak.png",
-  "Diyafram":            "images/organs/diyafram.png",
-  "Mide":                "images/organs/mide.png",
-  "İnce bağırsak":       "images/organs/ince-bagırsak.png",
-  "Karaciğer":           "images/organs/karaciger.png",
-  "Pankreas":            "images/organs/pankreas.png",
-  "Böbrekler":           "images/organs/bobrek.png",
-  "Mesane":              "images/organs/mesane.png",
-  "Üretra":              "images/organs/uretra.png",
-  "Böbrek üstü bezleri": "images/organs/bobrek-ustu-bezleri.png",
-  "Tiroit bezi":         "images/organs/tiroit.png",
-  "Paratiroit bezi":     "images/organs/paratiroit.png",
+  "Beyin":"images/organs/beyin.png","Omurilik":"images/organs/omurilik.png",
+  "Sinirler":"images/organs/sinirler.png","Hipofiz bezi":"images/organs/hipofiz-bezi.png",
+  "Kalp":"images/organs/kalp.png","Aorta":"images/organs/aorta.png",
+  "Kılcal damarlar":"images/organs/kilcal-damarlar.png",
+  "Toplardamarlar":"images/organs/toplardamarlar.png",
+  "Atardamarlar":"images/organs/atardamarlar.png",
+  "Akciğerler":"images/organs/akciger.png","Bronşlar":"images/organs/brons.png",
+  "Soluk borusu":"images/organs/soluk-borusu.png","Gırtlak":"images/organs/girtlak.png",
+  "Diyafram":"images/organs/diyafram.png","Mide":"images/organs/mide.png",
+  "İnce bağırsak":"images/organs/ince-bagırsak.png",
+  "Karaciğer":"images/organs/karaciger.png","Pankreas":"images/organs/pankreas.png",
+  "Böbrekler":"images/organs/bobrek.png","Mesane":"images/organs/mesane.png",
+  "Üretra":"images/organs/uretra.png",
+  "Böbrek üstü bezleri":"images/organs/bobrek-ustu-bezleri.png",
+  "Tiroit bezi":"images/organs/tiroit.png","Paratiroit bezi":"images/organs/paratiroit.png",
   "Böbrek üstü korteksi":"images/organs/bobrek-ustu-korteks.png",
-  "Epifiz bezi":         "images/organs/epifiz-bezi.png",
-  "Yumurtalıklar":       "images/organs/yumurtalik.png",
-  "Testisler":           "images/organs/testis.png",
-  "Rahim":               "images/organs/rahim.png",
-  "Fallop tüpleri":      "images/organs/fallop-tupleri.png",
-  "Prostat":             "images/organs/prostat.png",
-  "Femur":               "images/organs/femur.png",
-  "Kafatası":            "images/organs/kafatasi.png",
-  "Omurlar":             "images/organs/omur.png",
-  "Kaburgalar":          "images/organs/kaburga.png",
-  "Kıkırdak":            "images/organs/kikirdak.png"
+  "Epifiz bezi":"images/organs/epifiz-bezi.png",
+  "Yumurtalıklar":"images/organs/yumurtalik.png","Testisler":"images/organs/testis.png",
+  "Rahim":"images/organs/rahim.png","Fallop tüpleri":"images/organs/fallop-tupleri.png",
+  "Prostat":"images/organs/prostat.png","Femur":"images/organs/femur.png",
+  "Kafatası":"images/organs/kafatasi.png","Omurlar":"images/organs/omur.png",
+  "Kaburgalar":"images/organs/kaburga.png","Kıkırdak":"images/organs/kikirdak.png"
 };
 
 const allOrgans = Object.entries(SYSTEMS).flatMap(([s,d]) => d.organs.map(o => ({organ:o, system:s})));
@@ -326,16 +417,14 @@ let pool, placed, score, checked, selectedChip, gameLocked;
 
 function shuffle(a) {
   for (let i = a.length-1; i > 0; i--) {
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i],a[j]] = [a[j],a[i]];
+    const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]];
   }
   return a;
 }
 
 function reset() {
   pool = shuffle(allOrgans.map(x => x.organ));
-  placed = {};
-  Object.keys(SYSTEMS).forEach(s => placed[s] = []);
+  placed = {}; Object.keys(SYSTEMS).forEach(s => placed[s] = []);
   score = 0; checked = false; selectedChip = null; gameLocked = false;
   document.getElementById('results-overlay').classList.remove('show');
   document.getElementById('fdbk').textContent = '';
@@ -357,8 +446,7 @@ function makeImg(src, fallbackEmoji, w, r) {
     const ph = document.createElement('span');
     ph.className = 'img-placeholder';
     ph.style.cssText = `width:${w}px;height:${w}px;border-radius:${r}px;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(w*0.5)}px;background:var(--surface2);flex-shrink:0`;
-    ph.textContent = fallbackEmoji;
-    img.replaceWith(ph);
+    ph.textContent = fallbackEmoji; img.replaceWith(ph);
   };
   return img;
 }
@@ -373,15 +461,12 @@ function renderPool() {
   pool.forEach(organ => {
     const chip = document.createElement('div');
     chip.className = 'chip' + (selectedChip === organ ? ' selected' : '');
-    chip.draggable = !gameLocked;
-    chip.dataset.organ = organ;
+    chip.draggable = !gameLocked; chip.dataset.organ = organ;
     chip.appendChild(makeImg(ORGAN_IMAGES[organ], '🔬', 32, 7));
-    const lbl = document.createElement('span'); lbl.textContent = organ;
-    chip.appendChild(lbl);
+    const lbl = document.createElement('span'); lbl.textContent = organ; chip.appendChild(lbl);
     if (!gameLocked) {
       chip.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('organ', organ);
-        e.dataTransfer.setData('from', 'pool');
+        e.dataTransfer.setData('organ', organ); e.dataTransfer.setData('from', 'pool');
         setTimeout(() => chip.classList.add('dragging'), 0);
       });
       chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
@@ -392,37 +477,25 @@ function renderPool() {
 }
 
 function renderGrid() {
-  const grid = document.getElementById('grid');
-  grid.innerHTML = '';
+  const grid = document.getElementById('grid'); grid.innerHTML = '';
   Object.entries(SYSTEMS).forEach(([sys, d]) => {
     const card = document.createElement('div');
-    card.className = 'scard' + (gameLocked ? ' locked' : '');
-    card.dataset.system = sys;
-
-    const head = document.createElement('div');
-    head.className = 'scard-head';
+    card.className = 'scard' + (gameLocked ? ' locked' : ''); card.dataset.system = sys;
+    const head = document.createElement('div'); head.className = 'scard-head';
     head.appendChild(makeImg(d.img, d.emoji, 36, 8));
-    const t = document.createElement('div');
-    t.className = 'scard-title'; t.textContent = sys;
-    head.appendChild(t);
-    card.appendChild(head);
-
-    const dz = document.createElement('div');
-    dz.className = 'drop-zone';
+    const t = document.createElement('div'); t.className = 'scard-title'; t.textContent = sys;
+    head.appendChild(t); card.appendChild(head);
+    const dz = document.createElement('div'); dz.className = 'drop-zone';
     if (!placed[sys].length) {
-      const h = document.createElement('span');
-      h.className = 'empty-hint';
-      h.textContent = gameLocked ? '—' : 'buraya bırak';
-      dz.appendChild(h);
+      const h = document.createElement('span'); h.className = 'empty-hint';
+      h.textContent = gameLocked ? '—' : 'buraya bırak'; dz.appendChild(h);
     }
     placed[sys].forEach(organ => {
       const pill = document.createElement('div');
       const state = checked ? (SYSTEMS[sys].organs.includes(organ) ? 'correct' : 'wrong') : 'ungraded';
-      pill.className = `dpill ${state}`;
-      pill.draggable = !gameLocked;
+      pill.className = `dpill ${state}`; pill.draggable = !gameLocked;
       pill.appendChild(makeImg(ORGAN_IMAGES[organ], '🔬', 20, 4));
-      const lbl = document.createElement('span'); lbl.textContent = organ;
-      pill.appendChild(lbl);
+      const lbl = document.createElement('span'); lbl.textContent = organ; pill.appendChild(lbl);
       if (!gameLocked) {
         pill.addEventListener('dragstart', e => { e.dataTransfer.setData('organ', organ); e.dataTransfer.setData('from', sys); });
         pill.addEventListener('click', () => removeFrom(organ, sys));
@@ -430,14 +503,12 @@ function renderGrid() {
       dz.appendChild(pill);
     });
     card.appendChild(dz);
-
     if (!gameLocked) {
       card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
       card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
       card.addEventListener('drop', e => {
         e.preventDefault(); card.classList.remove('drag-over');
-        const organ = e.dataTransfer.getData('organ');
-        const from = e.dataTransfer.getData('from');
+        const organ = e.dataTransfer.getData('organ'); const from = e.dataTransfer.getData('from');
         if (from === 'pool') dropTo(organ, sys);
         else if (from !== sys) moveOrgan(organ, from, sys);
       });
@@ -455,16 +526,13 @@ function dropTo(organ, sys) {
   pool = pool.filter(o => o !== organ);
   if (!placed[sys].includes(organ)) placed[sys].push(organ);
   checked = false; selectedChip = null;
-  document.getElementById('fdbk').textContent = '';
-  render();
+  document.getElementById('fdbk').textContent = ''; render();
 }
 function removeFrom(organ, sys) {
   if (gameLocked) return;
   placed[sys] = placed[sys].filter(o => o !== organ);
   if (!pool.includes(organ)) pool.push(organ);
-  checked = false;
-  document.getElementById('fdbk').textContent = '';
-  render();
+  checked = false; document.getElementById('fdbk').textContent = ''; render();
 }
 function moveOrgan(organ, from, to) {
   if (gameLocked) return;
@@ -487,23 +555,15 @@ document.getElementById('check-btn').addEventListener('click', () => {
     return;
   }
   document.getElementById('fdbk').textContent = '';
-
   let correct = 0;
   const total = allOrgans.length;
   Object.entries(placed).forEach(([sys,organs]) => organs.forEach(o => { if (SYSTEMS[sys].organs.includes(o)) correct++; }));
-
-  score = correct * 10;
-  gameLocked = true;
-  checked = true;
-
+  score = correct * 10; gameLocked = true; checked = true;
   document.getElementById('check-btn').disabled = true;
   document.getElementById('pool-section').style.opacity = '0.4';
   document.getElementById('pool-section').style.pointerEvents = 'none';
   document.getElementById('sv').textContent = score;
-
-  const wrong = total - correct;
-  const perfect = correct === total;
-
+  const wrong = total - correct; const perfect = correct === total;
   document.getElementById('r-total').textContent = total;
   document.getElementById('r-correct').textContent = correct;
   document.getElementById('r-wrong').textContent = wrong;
@@ -513,36 +573,30 @@ document.getElementById('check-btn').addEventListener('click', () => {
   document.getElementById('results-sub').textContent = perfect
     ? 'Tüm organları doğru yerleştirdin, harika!'
     : correct + ' / ' + total + ' organı doğru yerleştirdin. Yanlış organlar aşağıda kırmızıyla işaretlendi.';
-
   document.getElementById('submit-msg').textContent = '';
   document.getElementById('username-input').value = '';
   document.getElementById('results-overlay').classList.add('show');
-
-  renderGrid();
-  updateStats();
+  renderGrid(); updateStats();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 document.getElementById('submit-score-btn').addEventListener('click', async () => {
   const username = document.getElementById('username-input').value.trim();
-  if (!username) {
-    setMsg('Lütfen bir kullanıcı adı gir.', 'err');
-    return;
-  }
+  if (!username) { setMsg('Lütfen bir kullanıcı adı gir.', 'err'); return; }
   const btn = document.getElementById('submit-score-btn');
-  btn.disabled = true;
-  setMsg('Kaydediliyor...', 'loading');
+  btn.disabled = true; setMsg('Kaydediliyor...', 'loading');
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, score, date: new Date().toISOString() })
+    await db.collection(SCORES_COLLECTION).add({
+      username,
+      score,
+      date: new Date().toISOString()
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
     setMsg('Skor kaydedildi! ✓', 'ok');
     btn.textContent = 'Kaydedildi ✓';
+    loadScoreboard(); // refresh scoreboard after saving
   } catch(err) {
-    setMsg('Bağlantı hatası. Sunucu çalışıyor mu?', 'err');
+    console.error(err);
+    setMsg('Hata: ' + err.message, 'err');
     btn.disabled = false;
   }
 });
@@ -553,7 +607,6 @@ function setMsg(msg, type) {
 }
 
 document.getElementById('reset-btn').addEventListener('click', reset);
-
 reset();
 </script>
 </body>

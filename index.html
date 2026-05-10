@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistem — Organ Eşleştirme</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0ede8;
+    --border: rgba(0,0,0,0.08);
+    --border-md: rgba(0,0,0,0.14);
+    --text: #1a1a18;
+    --text2: #6b6960;
+    --text3: #a8a49e;
+    --teal: #1D9E75;
+    --teal-light: #E1F5EE;
+    --teal-dark: #085041;
+    --blue: #378ADD;
+    --blue-light: #E6F1FB;
+    --blue-dark: #042C53;
+    --red-light: #FCEBEB;
+    --red-dark: #501313;
+    --red-border: #F09595;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+  }
+
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem 4rem;
+  }
+
+  #app { max-width: 900px; margin: 0 auto; }
+
+  #header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 1.5rem;
+  }
+  #header-left h1 { font-size: 26px; font-weight: 700; letter-spacing: -.4px; line-height: 1.2; }
+  #header-left p { font-size: 14px; color: var(--text2); margin-top: 4px; }
+  .statrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .stat {
+    font-size: 13px; font-weight: 600; padding: 5px 14px;
+    border-radius: 99px; background: var(--surface);
+    border: 1px solid var(--border); color: var(--text2);
+  }
+  .stat b { color: var(--text); }
+
+  #pbwrap { height: 6px; background: var(--surface2); border-radius: 3px; margin-bottom: 1.75rem; overflow: hidden; }
+  #pb { height: 100%; background: var(--teal); border-radius: 3px; transition: width .4s ease; width: 0%; }
+
+  #fdbk { font-size: 13px; color: var(--text2); min-height: 18px; margin-bottom: .85rem; }
+
+  #pool-section { margin-bottom: 1.5rem; transition: opacity .3s; }
+  #pool-label { font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: .06em; text-transform: uppercase; margin-bottom: .6rem; }
+  #pool {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: .85rem 1rem; min-height: 68px; align-items: center;
+  }
+
+  .chip {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 13px; font-weight: 600; padding: 5px 12px 5px 5px;
+    border-radius: 10px; background: var(--surface); border: 1px solid var(--border-md);
+    cursor: grab; transition: border-color .12s, transform .1s, box-shadow .1s; color: var(--text);
+  }
+  .chip:hover { border-color: var(--teal); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+  .chip.dragging { opacity: .3; cursor: grabbing; }
+  .chip.selected { border: 2px solid var(--blue); background: var(--blue-light); color: var(--blue-dark); }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+
+  .scard {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden; transition: border-color .15s; min-height: 160px;
+  }
+  .scard.drag-over { border: 2px solid var(--teal); background: var(--teal-light); }
+  .scard.locked { pointer-events: none; }
+  .scard-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--surface2);
+  }
+  .scard-head .img-placeholder {
+    width: 36px; height: 36px; border-radius: 8px; background: var(--surface);
+    display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+  }
+  .scard-title { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.3; }
+  .drop-zone { padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 5px; min-height: 60px; align-content: flex-start; }
+  .empty-hint { font-size: 11px; color: var(--text3); font-style: italic; padding: 2px 0; align-self: center; }
+
+  .dpill {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600; padding: 3px 8px 3px 4px;
+    border-radius: 8px; border: 1px solid; cursor: pointer; transition: opacity .15s;
+  }
+  .dpill:hover { opacity: .7; }
+  .dpill .img-placeholder {
+    width: 20px; height: 20px; border-radius: 4px; background: rgba(0,0,0,0.06);
+    display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;
+  }
+  .dpill.ungraded { background: var(--blue-light); color: var(--blue-dark); border-color: #85B7EB; }
+  .dpill.correct   { background: var(--teal-light); color: var(--teal-dark); border-color: #5DCAA5; }
+  .dpill.wrong     { background: var(--red-light);  color: var(--red-dark);  border-color: var(--red-border); }
+
+  #actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700;
+    padding: 9px 22px; border-radius: var(--radius-sm); cursor: pointer;
+    border: 1px solid var(--border-md); background: var(--surface); color: var(--text);
+    transition: background .12s, transform .08s;
+  }
+  button:hover { background: var(--surface2); }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+  button.primary { background: var(--text); color: var(--surface); border-color: transparent; }
+  button.primary:hover { opacity: .85; }
+
+  /* Results panel */
+  #results-overlay {
+    display: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 2rem;
+    margin-bottom: 1.5rem; text-align: center;
+  }
+  #results-overlay.show { display: block; }
+  #results-emoji { font-size: 52px; margin-bottom: .6rem; }
+  #results-title { font-size: 24px; font-weight: 700; margin-bottom: .3rem; }
+  #results-sub { font-size: 14px; color: var(--text2); margin-bottom: 1.75rem; line-height: 1.5; }
+
+  .results-stats {
+    display: flex; justify-content: center; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 2rem;
+  }
+  .rstat { background: var(--surface2); border-radius: var(--radius-md); padding: .9rem 1.5rem; min-width: 90px; }
+  .rstat-val { font-size: 30px; font-weight: 700; line-height: 1; }
+  .rstat-lbl { font-size: 12px; color: var(--text2); margin-top: 5px; }
+  .rstat.green .rstat-val { color: var(--teal); }
+  .rstat.red   .rstat-val { color: #E24B4A; }
+  .rstat.blue  .rstat-val { color: var(--blue); }
+
+  #score-form-title { font-size: 14px; font-weight: 700; color: var(--text2); margin-bottom: .75rem; }
+  #score-form-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  #username-input {
+    font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 600;
+    padding: 9px 16px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-md); background: var(--surface2);
+    color: var(--text); outline: none; width: 220px; transition: border-color .15s;
+  }
+  #username-input:focus { border-color: var(--teal); background: var(--surface); }
+  #submit-msg { margin-top: .85rem; font-size: 13px; font-weight: 600; min-height: 20px; }
+  #submit-msg.ok      { color: var(--teal); }
+  #submit-msg.err     { color: #E24B4A; }
+  #submit-msg.loading { color: var(--text3); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="header-left">
+      <h1>Sistem — Organ Eşleştirme</h1>
+      <p>11. Sınıf Biyoloji · Organları doğru sisteme sürükle</p>
+    </div>
+    <div>
+      <div class="statrow">
+        <div class="stat">Skor: <b id="sv">0</b></div>
+        <div class="stat">Kalan: <b id="rv">0</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pbwrap"><div id="pb"></div></div>
+  <div id="fdbk"></div>
+
+  <!-- Results panel — shown after Kontrol Et -->
+  <div id="results-overlay">
+    <div id="results-emoji"></div>
+    <div id="results-title"></div>
+    <div id="results-sub"></div>
+    <div class="results-stats">
+      <div class="rstat blue">
+        <div class="rstat-val" id="r-total"></div>
+        <div class="rstat-lbl">Toplam Organ</div>
+      </div>
+      <div class="rstat green">
+        <div class="rstat-val" id="r-correct"></div>
+        <div class="rstat-lbl">Doğru</div>
+      </div>
+      <div class="rstat red">
+        <div class="rstat-val" id="r-wrong"></div>
+        <div class="rstat-lbl">Yanlış</div>
+      </div>
+      <div class="rstat blue">
+        <div class="rstat-val" id="r-score"></div>
+        <div class="rstat-lbl">Puan</div>
+      </div>
+    </div>
+    <div id="score-form-title">Skorunu kaydet</div>
+    <div id="score-form-row">
+      <input type="text" id="username-input" placeholder="Kullanıcı adın..." maxlength="30" autocomplete="off" />
+      <button class="primary" id="submit-score-btn">Kaydet</button>
+    </div>
+    <div id="submit-msg"></div>
+  </div>
+
+  <div id="pool-section">
+    <div id="pool-label">Organlar — sürükle veya seç, sonra sisteme bırak</div>
+    <div id="pool"></div>
+  </div>
+
+  <div id="grid"></div>
+
+  <div id="actions">
+    <button class="primary" id="check-btn">Kontrol Et</button>
+    <button id="reset-btn">↺ Yeniden Başla</button>
+  </div>
+</div>
+
+<script>
+/* ─── CONFIG ───────────────────────────────────────────────────────
+   Change API_URL to your server address once your backend is running.
+   Example: 'https://yoursite.com/api/scores'
+──────────────────────────────────────────────────────────────────── */
+const API_URL = 'http://localhost:3000/api/scores';
+
+/* ─── DATA ─────────────────────────────────────────────────────────
+   Image paths point to local files.
+   Folder structure:
+     images/systems/sinir-sistemi.png  etc.
+     images/organs/beyin.png           etc.
+──────────────────────────────────────────────────────────────────── */
+const SYSTEMS = {
+  "Sinir Sistemi": {
+    emoji: "🧠",
+    img: "images/systems/sinir-sistemi.png",
+    organs: ["Beyin","Omurilik","Sinirler","Hipofiz bezi"]
+  },
+  "Dolaşım Sistemi": {
+    emoji: "❤️",
+    img: "images/systems/dolasim-sistemi.png",
+    organs: ["Kalp","Aorta","Kılcal damarlar","Toplardamarlar","Atardamarlar"]
+  },
+  "Solunum Sistemi": {
+    emoji: "🫁",
+    img: "images/systems/solunum-sistemi.png",
+    organs: ["Akciğerler","Bronşlar","Soluk borusu","Gırtlak","Diyafram"]
+  },
+  "Sindirim Sistemi": {
+    emoji: "🫃",
+    img: "images/systems/sindirim-sistemi.png",
+    organs: ["Mide","İnce bağırsak","Karaciğer","Pankreas"]
+  },
+  "Boşaltım Sistemi": {
+    emoji: "💧",
+    img: "images/systems/bosaltim-sistemi.png",
+    organs: ["Böbrekler","Mesane","Üretra","Böbrek üstü bezleri"]
+  },
+  "Endokrin Sistem": {
+    emoji: "⚗️",
+    img: "images/systems/endokrin-sistem.png",
+    organs: ["Tiroit bezi","Paratiroit bezi","Böbrek üstü korteksi","Epifiz bezi"]
+  },
+  "Üreme Sistemi": {
+    emoji: "🧬",
+    img: "images/systems/ureme-sistemi.png",
+    organs: ["Yumurtalıklar","Testisler","Rahim","Fallop tüpleri","Prostat"]
+  },
+  "İskelet Sistemi": {
+    emoji: "🦴",
+    img: "images/systems/iskelet-sistemi.png",
+    organs: ["Femur","Kafatası","Omurlar","Kaburgalar","Kıkırdak"]
+  }
+};
+
+const ORGAN_IMAGES = {
+  "Beyin":               "images/organs/beyin.png",
+  "Omurilik":            "images/organs/omurilik.png",
+  "Sinirler":            "images/organs/sinirler.png",
+  "Hipofiz bezi":        "images/organs/hipofiz-bezi.png",
+  "Kalp":                "images/organs/kalp.png",
+  "Aorta":               "images/organs/aorta.png",
+  "Kılcal damarlar":     "images/organs/kilcal-damarlar.png",
+  "Toplardamarlar":      "images/organs/toplardamarlar.png",
+  "Atardamarlar":        "images/organs/atardamarlar.png",
+  "Akciğerler":          "images/organs/akciger.png",
+  "Bronşlar":            "images/organs/brons.png",
+  "Soluk borusu":        "images/organs/soluk-borusu.png",
+  "Gırtlak":             "images/organs/girtlak.png",
+  "Diyafram":            "images/organs/diyafram.png",
+  "Mide":                "images/organs/mide.png",
+  "İnce bağırsak":       "images/organs/ince-bagırsak.png",
+  "Karaciğer":           "images/organs/karaciger.png",
+  "Pankreas":            "images/organs/pankreas.png",
+  "Böbrekler":           "images/organs/bobrek.png",
+  "Mesane":              "images/organs/mesane.png",
+  "Üretra":              "images/organs/uretra.png",
+  "Böbrek üstü bezleri": "images/organs/bobrek-ustu-bezleri.png",
+  "Tiroit bezi":         "images/organs/tiroit.png",
+  "Paratiroit bezi":     "images/organs/paratiroit.png",
+  "Böbrek üstü korteksi":"images/organs/bobrek-ustu-korteks.png",
+  "Epifiz bezi":         "images/organs/epifiz-bezi.png",
+  "Yumurtalıklar":       "images/organs/yumurtalik.png",
+  "Testisler":           "images/organs/testis.png",
+  "Rahim":               "images/organs/rahim.png",
+  "Fallop tüpleri":      "images/organs/fallop-tupleri.png",
+  "Prostat":             "images/organs/prostat.png",
+  "Femur":               "images/organs/femur.png",
+  "Kafatası":            "images/organs/kafatasi.png",
+  "Omurlar":             "images/organs/omur.png",
+  "Kaburgalar":          "images/organs/kaburga.png",
+  "Kıkırdak":            "images/organs/kikirdak.png"
+};
+
+const allOrgans = Object.entries(SYSTEMS).flatMap(([s,d]) => d.organs.map(o => ({organ:o, system:s})));
+let pool, placed, score, checked, selectedChip, gameLocked;
+
+function shuffle(a) {
+  for (let i = a.length-1; i > 0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function reset() {
+  pool = shuffle(allOrgans.map(x => x.organ));
+  placed = {};
+  Object.keys(SYSTEMS).forEach(s => placed[s] = []);
+  score = 0; checked = false; selectedChip = null; gameLocked = false;
+  document.getElementById('results-overlay').classList.remove('show');
+  document.getElementById('fdbk').textContent = '';
+  document.getElementById('check-btn').disabled = false;
+  document.getElementById('pool-section').style.opacity = '1';
+  document.getElementById('pool-section').style.pointerEvents = '';
+  const btn = document.getElementById('submit-score-btn');
+  btn.disabled = false; btn.textContent = 'Kaydet';
+  render();
+}
+
+function render() { renderPool(); renderGrid(); updateStats(); }
+
+function makeImg(src, fallbackEmoji, w, r) {
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = `width:${w}px;height:${w}px;border-radius:${r}px;object-fit:cover;flex-shrink:0;background:#eee`;
+  img.onerror = function() {
+    const ph = document.createElement('span');
+    ph.className = 'img-placeholder';
+    ph.style.cssText = `width:${w}px;height:${w}px;border-radius:${r}px;display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(w*0.5)}px;background:var(--surface2);flex-shrink:0`;
+    ph.textContent = fallbackEmoji;
+    img.replaceWith(ph);
+  };
+  return img;
+}
+
+function renderPool() {
+  const el = document.getElementById('pool');
+  el.innerHTML = '';
+  if (!pool.length) {
+    el.innerHTML = '<span style="font-size:13px;color:var(--text3);font-style:italic">Tüm organlar yerleştirildi ✓</span>';
+    return;
+  }
+  pool.forEach(organ => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (selectedChip === organ ? ' selected' : '');
+    chip.draggable = !gameLocked;
+    chip.dataset.organ = organ;
+    chip.appendChild(makeImg(ORGAN_IMAGES[organ], '🔬', 32, 7));
+    const lbl = document.createElement('span'); lbl.textContent = organ;
+    chip.appendChild(lbl);
+    if (!gameLocked) {
+      chip.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('organ', organ);
+        e.dataTransfer.setData('from', 'pool');
+        setTimeout(() => chip.classList.add('dragging'), 0);
+      });
+      chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+      chip.addEventListener('click', () => { selectedChip = selectedChip === organ ? null : organ; renderPool(); });
+    }
+    el.appendChild(chip);
+  });
+}
+
+function renderGrid() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  Object.entries(SYSTEMS).forEach(([sys, d]) => {
+    const card = document.createElement('div');
+    card.className = 'scard' + (gameLocked ? ' locked' : '');
+    card.dataset.system = sys;
+
+    const head = document.createElement('div');
+    head.className = 'scard-head';
+    head.appendChild(makeImg(d.img, d.emoji, 36, 8));
+    const t = document.createElement('div');
+    t.className = 'scard-title'; t.textContent = sys;
+    head.appendChild(t);
+    card.appendChild(head);
+
+    const dz = document.createElement('div');
+    dz.className = 'drop-zone';
+    if (!placed[sys].length) {
+      const h = document.createElement('span');
+      h.className = 'empty-hint';
+      h.textContent = gameLocked ? '—' : 'buraya bırak';
+      dz.appendChild(h);
+    }
+    placed[sys].forEach(organ => {
+      const pill = document.createElement('div');
+      const state = checked ? (SYSTEMS[sys].organs.includes(organ) ? 'correct' : 'wrong') : 'ungraded';
+      pill.className = `dpill ${state}`;
+      pill.draggable = !gameLocked;
+      pill.appendChild(makeImg(ORGAN_IMAGES[organ], '🔬', 20, 4));
+      const lbl = document.createElement('span'); lbl.textContent = organ;
+      pill.appendChild(lbl);
+      if (!gameLocked) {
+        pill.addEventListener('dragstart', e => { e.dataTransfer.setData('organ', organ); e.dataTransfer.setData('from', sys); });
+        pill.addEventListener('click', () => removeFrom(organ, sys));
+      }
+      dz.appendChild(pill);
+    });
+    card.appendChild(dz);
+
+    if (!gameLocked) {
+      card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+      card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+      card.addEventListener('drop', e => {
+        e.preventDefault(); card.classList.remove('drag-over');
+        const organ = e.dataTransfer.getData('organ');
+        const from = e.dataTransfer.getData('from');
+        if (from === 'pool') dropTo(organ, sys);
+        else if (from !== sys) moveOrgan(organ, from, sys);
+      });
+      card.addEventListener('click', e => {
+        if (selectedChip && (e.target === card || e.target === dz || e.target.classList.contains('empty-hint')))
+          dropTo(selectedChip, sys);
+      });
+    }
+    grid.appendChild(card);
+  });
+}
+
+function dropTo(organ, sys) {
+  if (!organ || gameLocked) return;
+  pool = pool.filter(o => o !== organ);
+  if (!placed[sys].includes(organ)) placed[sys].push(organ);
+  checked = false; selectedChip = null;
+  document.getElementById('fdbk').textContent = '';
+  render();
+}
+function removeFrom(organ, sys) {
+  if (gameLocked) return;
+  placed[sys] = placed[sys].filter(o => o !== organ);
+  if (!pool.includes(organ)) pool.push(organ);
+  checked = false;
+  document.getElementById('fdbk').textContent = '';
+  render();
+}
+function moveOrgan(organ, from, to) {
+  if (gameLocked) return;
+  placed[from] = placed[from].filter(o => o !== organ);
+  if (!placed[to].includes(organ)) placed[to].push(organ);
+  checked = false; render();
+}
+
+function updateStats() {
+  const total = allOrgans.length;
+  const placedCount = Object.values(placed).reduce((s,a) => s+a.length, 0);
+  document.getElementById('rv').textContent = pool.length;
+  document.getElementById('sv').textContent = score;
+  document.getElementById('pb').style.width = Math.round(placedCount / total * 100) + '%';
+}
+
+document.getElementById('check-btn').addEventListener('click', () => {
+  if (pool.length > 0) {
+    document.getElementById('fdbk').textContent = 'Devam et! Henüz ' + pool.length + ' organ havuzda kaldı.';
+    return;
+  }
+  document.getElementById('fdbk').textContent = '';
+
+  let correct = 0;
+  const total = allOrgans.length;
+  Object.entries(placed).forEach(([sys,organs]) => organs.forEach(o => { if (SYSTEMS[sys].organs.includes(o)) correct++; }));
+
+  score = correct * 10;
+  gameLocked = true;
+  checked = true;
+
+  document.getElementById('check-btn').disabled = true;
+  document.getElementById('pool-section').style.opacity = '0.4';
+  document.getElementById('pool-section').style.pointerEvents = 'none';
+  document.getElementById('sv').textContent = score;
+
+  const wrong = total - correct;
+  const perfect = correct === total;
+
+  document.getElementById('r-total').textContent = total;
+  document.getElementById('r-correct').textContent = correct;
+  document.getElementById('r-wrong').textContent = wrong;
+  document.getElementById('r-score').textContent = score;
+  document.getElementById('results-emoji').textContent = perfect ? '🎉' : correct >= Math.ceil(total * 0.7) ? '👍' : '📚';
+  document.getElementById('results-title').textContent = perfect ? 'Mükemmel!' : correct >= Math.ceil(total * 0.7) ? 'İyi iş!' : 'Tekrar dene!';
+  document.getElementById('results-sub').textContent = perfect
+    ? 'Tüm organları doğru yerleştirdin, harika!'
+    : correct + ' / ' + total + ' organı doğru yerleştirdin. Yanlış organlar aşağıda kırmızıyla işaretlendi.';
+
+  document.getElementById('submit-msg').textContent = '';
+  document.getElementById('username-input').value = '';
+  document.getElementById('results-overlay').classList.add('show');
+
+  renderGrid();
+  updateStats();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+document.getElementById('submit-score-btn').addEventListener('click', async () => {
+  const username = document.getElementById('username-input').value.trim();
+  if (!username) {
+    setMsg('Lütfen bir kullanıcı adı gir.', 'err');
+    return;
+  }
+  const btn = document.getElementById('submit-score-btn');
+  btn.disabled = true;
+  setMsg('Kaydediliyor...', 'loading');
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, score, date: new Date().toISOString() })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    setMsg('Skor kaydedildi! ✓', 'ok');
+    btn.textContent = 'Kaydedildi ✓';
+  } catch(err) {
+    setMsg('Bağlantı hatası. Sunucu çalışıyor mu?', 'err');
+    btn.disabled = false;
+  }
+});
+
+function setMsg(msg, type) {
+  const el = document.getElementById('submit-msg');
+  el.textContent = msg; el.className = type;
+}
+
+document.getElementById('reset-btn').addEventListener('click', reset);
+
+reset();
+</script>
+</body>
+</html>

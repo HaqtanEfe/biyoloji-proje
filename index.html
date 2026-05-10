@@ -286,19 +286,14 @@
   </div>
 </div>
 
-<!-- Firebase SDK (compat / CDN — no build step needed) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-
-<script>
+<script type="module">
 /* ══════════════════════════════════════════════════════════════════
-   🔥 FIREBASE CONFIG
-   1. Go to https://console.firebase.google.com
-   2. Create a project → "Add app" → Web
-   3. Copy the firebaseConfig object and paste it below.
-   4. In Firebase console: Firestore Database → Create database (start in test mode)
-   5. (Optional) Set security rules when done testing.
+   🔥 FIREBASE CONFIG — replace the YOUR_... placeholders below
    ══════════════════════════════════════════════════════════════════ */
+import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getFirestore, collection, addDoc,
+         getDocs, query, orderBy, limit }             from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-lite.js';
+
 const firebaseConfig = {
   apiKey:            "YOUR_API_KEY",
   authDomain:        "YOUR_PROJECT.firebaseapp.com",
@@ -308,8 +303,8 @@ const firebaseConfig = {
   appId:             "YOUR_APP_ID"
 };
 
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
 const SCORES_COLLECTION = 'scores';
 
 /* ── Scoreboard helpers ─────────────────────────────────────────── */
@@ -317,20 +312,18 @@ async function loadScoreboard() {
   const list = document.getElementById('sb-list');
   list.innerHTML = '<li id="sb-loading">Yükleniyor…</li>';
   try {
-    const snap = await db.collection(SCORES_COLLECTION)
-      .orderBy('score', 'desc')
-      .orderBy('date', 'asc')
-      .limit(10)
-      .get();
+    const q    = query(collection(db, SCORES_COLLECTION), orderBy('score','desc'), orderBy('date','asc'), limit(10));
+    const snap = await getDocs(q);
 
     list.innerHTML = '';
     if (snap.empty) {
       list.innerHTML = '<li id="sb-empty">Henüz skor yok — ilk sen ol!</li>';
       return;
     }
-    snap.forEach((doc, idx) => {
+    let rank = 0;
+    snap.forEach(doc => {
+      rank++;
       const d = doc.data();
-      const rank = snap.docs.indexOf(doc) + 1;
       const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
       const dateStr = d.date ? new Date(d.date).toLocaleDateString('tr-TR', { day:'2-digit', month:'short' }) : '';
       const timeStr = (d.timeSecs != null) ? fmtTime(d.timeSecs) : '';
@@ -356,6 +349,34 @@ function escHtml(str) {
 
 document.getElementById('sb-refresh-btn').addEventListener('click', loadScoreboard);
 loadScoreboard();
+
+/* ── Score submission (wired up here since we need addDoc in scope) */
+document.getElementById('submit-score-btn').addEventListener('click', async () => {
+  const username = document.getElementById('username-input').value.trim();
+  if (!username) { setMsg('Lütfen bir kullanıcı adı gir.', 'err'); return; }
+  const btn = document.getElementById('submit-score-btn');
+  btn.disabled = true; setMsg('Kaydediliyor...', 'loading');
+  try {
+    await addDoc(collection(db, SCORES_COLLECTION), {
+      username,
+      score:    window._gameScore,
+      timeSecs: window._gameTimeSecs,
+      date:     new Date().toISOString()
+    });
+    setMsg('Skor kaydedildi! ✓', 'ok');
+    btn.textContent = 'Kaydedildi ✓';
+    loadScoreboard();
+  } catch(err) {
+    console.error(err);
+    setMsg('Hata: ' + err.message, 'err');
+    btn.disabled = false;
+  }
+});
+
+function setMsg(msg, type) {
+  const el = document.getElementById('submit-msg');
+  el.textContent = msg; el.className = type;
+}
 
 /* ══════════════════════════════════════════════════════════════════
    GAME DATA
@@ -593,6 +614,8 @@ document.getElementById('check-btn').addEventListener('click', () => {
   stopTimer();
   const bonus = timeBonus(elapsedSecs);
   score = correct * 30 + bonus;
+  window._gameScore    = score;
+  window._gameTimeSecs = elapsedSecs;
   gameLocked = true; checked = true;
   document.getElementById('check-btn').disabled = true;
   document.getElementById('pool-section').style.opacity = '0.4';
@@ -615,33 +638,6 @@ document.getElementById('check-btn').addEventListener('click', () => {
   renderGrid(); updateStats();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
-
-document.getElementById('submit-score-btn').addEventListener('click', async () => {
-  const username = document.getElementById('username-input').value.trim();
-  if (!username) { setMsg('Lütfen bir kullanıcı adı gir.', 'err'); return; }
-  const btn = document.getElementById('submit-score-btn');
-  btn.disabled = true; setMsg('Kaydediliyor...', 'loading');
-  try {
-    await db.collection(SCORES_COLLECTION).add({
-      username,
-      score,
-      timeSecs: elapsedSecs,
-      date: new Date().toISOString()
-    });
-    setMsg('Skor kaydedildi! ✓', 'ok');
-    btn.textContent = 'Kaydedildi ✓';
-    loadScoreboard(); // refresh scoreboard after saving
-  } catch(err) {
-    console.error(err);
-    setMsg('Hata: ' + err.message, 'err');
-    btn.disabled = false;
-  }
-});
-
-function setMsg(msg, type) {
-  const el = document.getElementById('submit-msg');
-  el.textContent = msg; el.className = type;
-}
 
 document.getElementById('reset-btn').addEventListener('click', reset);
 reset();

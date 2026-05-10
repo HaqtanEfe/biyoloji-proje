@@ -201,6 +201,7 @@
     background: var(--teal-light); border-radius: 99px;
     padding: 2px 10px; font-size: 13px;
   }
+  .sb-time { font-size: 12px; color: var(--teal-dark); background: var(--teal-light); border-radius: 99px; padding: 2px 8px; flex-shrink: 0; font-weight: 600; }
   .sb-date { font-size: 11px; color: var(--text3); flex-shrink: 0; }
   #sb-empty { font-size: 13px; color: var(--text3); font-style: italic; padding: 8px 0; }
   #sb-loading { font-size: 13px; color: var(--text3); padding: 8px 0; }
@@ -218,6 +219,7 @@
       <div class="statrow">
         <div class="stat">Skor: <b id="sv">0</b></div>
         <div class="stat">Kalan: <b id="rv">0</b></div>
+        <div class="stat" id="timer-stat" style="display:none">⏱ <b id="tv">00:00</b></div>
       </div>
     </div>
   </div>
@@ -246,6 +248,10 @@
       <div class="rstat blue">
         <div class="rstat-val" id="r-score"></div>
         <div class="rstat-lbl">Puan</div>
+      </div>
+      <div class="rstat green">
+        <div class="rstat-val" id="r-time"></div>
+        <div class="rstat-lbl">Süre Bonusu</div>
       </div>
     </div>
     <div id="score-form-title">Skorunu kaydet</div>
@@ -294,13 +300,12 @@
    5. (Optional) Set security rules when done testing.
    ══════════════════════════════════════════════════════════════════ */
 const firebaseConfig = {
-  apiKey: "AIzaSyCfbtCwOGARVVx3JG4Yd1wooMvv6zcaI2o",
-  authDomain: "biyoloji-proje.firebaseapp.com",
-  projectId: "biyoloji-proje",
-  storageBucket: "biyoloji-proje.firebasestorage.app",
-  messagingSenderId: "656808377720",
-  appId: "1:656808377720:web:080de35fe02016f485dc8d",
-  measurementId: "G-KDBGGJFF9G"
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -328,10 +333,12 @@ async function loadScoreboard() {
       const rank = snap.docs.indexOf(doc) + 1;
       const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
       const dateStr = d.date ? new Date(d.date).toLocaleDateString('tr-TR', { day:'2-digit', month:'short' }) : '';
+      const timeStr = (d.timeSecs != null) ? fmtTime(d.timeSecs) : '';
       const li = document.createElement('li');
       li.innerHTML = `
         <span class="sb-rank ${rankClass}">${rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}</span>
         <span class="sb-name">${escHtml(d.username)}</span>
+        ${timeStr ? `<span class="sb-time">⏱ ${timeStr}</span>` : ''}
         <span class="sb-score">${d.score} puan</span>
         <span class="sb-date">${dateStr}</span>
       `;
@@ -372,7 +379,7 @@ const SYSTEMS = {
   },
   "Boşaltım Sistemi": {
     emoji: "💧", img: "images/systems/bosaltim-sistemi.png",
-    organs: ["Böbrekler","Mesane","Üreter","Böbrek üstü bezleri"]
+    organs: ["Böbrekler","Mesane","Üretra","Böbrek üstü bezleri"]
   },
   "Endokrin Sistem": {
     emoji: "⚗️", img: "images/systems/endokrin-sistem.png",
@@ -398,10 +405,10 @@ const ORGAN_IMAGES = {
   "Akciğerler":"images/organs/akciger.png","Bronşlar":"images/organs/brons.png",
   "Soluk borusu":"images/organs/soluk-borusu.png","Gırtlak":"images/organs/girtlak.png",
   "Diyafram":"images/organs/diyafram.png","Mide":"images/organs/mide.png",
-  "İnce bağırsak":"images/organs/ince-bagirsak.png",
+  "İnce bağırsak":"images/organs/ince-bagırsak.png",
   "Karaciğer":"images/organs/karaciger.png","Pankreas":"images/organs/pankreas.png",
   "Böbrekler":"images/organs/bobrek.png","Mesane":"images/organs/mesane.png",
-  "Üreter":"images/organs/ureter.png",
+  "Üretra":"images/organs/uretra.png",
   "Böbrek üstü bezleri":"images/organs/bobrek-ustu-bezleri.png",
   "Tiroit bezi":"images/organs/tiroit.png","Paratiroit bezi":"images/organs/paratiroit.png",
   "Böbrek üstü korteksi":"images/organs/bobrek-ustu-korteks.png",
@@ -415,6 +422,26 @@ const ORGAN_IMAGES = {
 
 const allOrgans = Object.entries(SYSTEMS).flatMap(([s,d]) => d.organs.map(o => ({organ:o, system:s})));
 let pool, placed, score, checked, selectedChip, gameLocked;
+let timerInterval = null, timerStarted = false, elapsedSecs = 0;
+
+function fmtTime(s) {
+  return String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
+}
+function timeBonus(secs) {
+  return Math.max(0, 600 - Math.floor(secs));
+}
+function startTimer() {
+  if (timerStarted) return;
+  timerStarted = true;
+  document.getElementById('timer-stat').style.display = '';
+  timerInterval = setInterval(() => {
+    elapsedSecs++;
+    document.getElementById('tv').textContent = fmtTime(elapsedSecs);
+  }, 1000);
+}
+function stopTimer() {
+  clearInterval(timerInterval); timerInterval = null;
+}
 
 function shuffle(a) {
   for (let i = a.length-1; i > 0; i--) {
@@ -427,6 +454,9 @@ function reset() {
   pool = shuffle(allOrgans.map(x => x.organ));
   placed = {}; Object.keys(SYSTEMS).forEach(s => placed[s] = []);
   score = 0; checked = false; selectedChip = null; gameLocked = false;
+  stopTimer(); timerStarted = false; elapsedSecs = 0;
+  document.getElementById('tv').textContent = '00:00';
+  document.getElementById('timer-stat').style.display = 'none';
   document.getElementById('results-overlay').classList.remove('show');
   document.getElementById('fdbk').textContent = '';
   document.getElementById('check-btn').disabled = false;
@@ -524,6 +554,7 @@ function renderGrid() {
 
 function dropTo(organ, sys) {
   if (!organ || gameLocked) return;
+  startTimer();
   pool = pool.filter(o => o !== organ);
   if (!placed[sys].includes(organ)) placed[sys].push(organ);
   checked = false; selectedChip = null;
@@ -559,7 +590,10 @@ document.getElementById('check-btn').addEventListener('click', () => {
   let correct = 0;
   const total = allOrgans.length;
   Object.entries(placed).forEach(([sys,organs]) => organs.forEach(o => { if (SYSTEMS[sys].organs.includes(o)) correct++; }));
-  score = correct * 10; gameLocked = true; checked = true;
+  stopTimer();
+  const bonus = timeBonus(elapsedSecs);
+  score = correct * 30 + bonus;
+  gameLocked = true; checked = true;
   document.getElementById('check-btn').disabled = true;
   document.getElementById('pool-section').style.opacity = '0.4';
   document.getElementById('pool-section').style.pointerEvents = 'none';
@@ -569,6 +603,7 @@ document.getElementById('check-btn').addEventListener('click', () => {
   document.getElementById('r-correct').textContent = correct;
   document.getElementById('r-wrong').textContent = wrong;
   document.getElementById('r-score').textContent = score;
+  document.getElementById('r-time').textContent = '+' + bonus + ' (' + fmtTime(elapsedSecs) + ')';
   document.getElementById('results-emoji').textContent = perfect ? '🎉' : correct >= Math.ceil(total * 0.7) ? '👍' : '📚';
   document.getElementById('results-title').textContent = perfect ? 'Mükemmel!' : correct >= Math.ceil(total * 0.7) ? 'İyi iş!' : 'Tekrar dene!';
   document.getElementById('results-sub').textContent = perfect
@@ -590,6 +625,7 @@ document.getElementById('submit-score-btn').addEventListener('click', async () =
     await db.collection(SCORES_COLLECTION).add({
       username,
       score,
+      timeSecs: elapsedSecs,
       date: new Date().toISOString()
     });
     setMsg('Skor kaydedildi! ✓', 'ok');
